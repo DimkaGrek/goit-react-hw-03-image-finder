@@ -1,79 +1,96 @@
 import React, { Component } from 'react';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import s from './App.module.css';
-import { nanoid } from 'nanoid';
-import ContactForm from './ContactForm/ContactForm';
-import ContactList from './ContactList/ContactList';
-import Filter from './Filter/Filter';
-import Notification from './Notification/Notification';
+import Searchbar from './Searchbar/Searchbar';
+import { getPhotos } from './api/gallery';
+import ImageGallery from './ImageGallery/ImageGallery';
+import Button from './Button/Button';
+import Loader from './Loader/Loader';
+import { Modal } from './Modal/Modal';
 
 export default class App extends Component {
   state = {
-    contacts: [
-      { id: 'id-1', name: 'Rosie Simpson', phone: '459-12-56' },
-      { id: 'id-2', name: 'Hermione Kline', phone: '443-89-12' },
-      { id: 'id-3', name: 'Eden Clements', phone: '645-17-79' },
-      { id: 'id-4', name: 'Annie Copeland', phone: '227-91-26' },
-    ],
-    filter: '',
+    query: '',
+    page: 1,
+    photos: [],
+    totalPages: 1,
+    isLoader: false,
+    showModal: false,
+    modalContent: {},
   };
 
-  handlerFormSubmit = ({ name, phone }) => {
-    const searchName = name.toLowerCase();
-    if (
-      this.state.contacts.find(
-        contact => contact.name.toLowerCase() === searchName
-      )
-    ) {
-      alert(`${name} is already in contacts.`);
-      return;
+  async componentDidUpdate(_, prevState) {
+    const { query, page } = this.state;
+    if (prevState.query !== query || prevState.page !== page) {
+      try {
+        this.setState({ isLoader: true });
+        const data = await getPhotos(query, page);
+
+        this.setState(prev => ({
+          photos: [...prev.photos, ...data.results],
+        }));
+        if (prevState.totalPages !== data.total_pages) {
+          this.setState({ totalPages: data.total_pages });
+        }
+      } catch (e) {
+        console.log(e);
+        toast.error('Sorry, problem connection to server!');
+      } finally {
+        this.setState({ isLoader: false });
+      }
     }
-    const contact = {
-      id: nanoid(),
-      name,
-      phone,
-    };
+  }
+
+  handleFormSubmit = query => {
+    this.setState({ query, page: 1, photos: [] });
+  };
+
+  handleClickButton = e => {
     this.setState(prev => ({
-      contacts: [...prev.contacts, contact],
+      page: prev.page + 1,
     }));
   };
 
-  deleteContact = id => {
-    this.setState(prev => ({
-      contacts: prev.contacts.filter(contact => contact.id !== id),
-    }));
+  handleToggleModal = () => {
+    this.setState(prev => ({ showModal: !prev.showModal }));
   };
 
-  handleFilter = value => {
-    this.setState({
-      filter: value,
-    });
+  handleOpenModal = img => {
+    this.setState({ modalContent: img, showModal: true, isLoader: true });
   };
 
-  foundContacts = () => {
-    const filter = this.state.filter.toLowerCase();
-    return this.state.contacts.filter(contact =>
-      contact.name.toLowerCase().includes(filter)
-    );
+  handleToggleLoader = () => {
+    this.setState(prev => ({ isLoader: !prev.isLoader }));
   };
 
   render() {
+    const { photos, page, totalPages, isLoader, showModal, modalContent } =
+      this.state;
     return (
-      <div className={s.container}>
-        <h1>Phonebook</h1>
-        <ContactForm onSubmit={this.handlerFormSubmit} />
-
-        {this.state.contacts.length > 0 ? (
-          <>
-            <Filter value={this.state.filter} onChange={this.handleFilter} />
-
-            <ContactList
-              contacts={this.foundContacts()}
-              onDelete={this.deleteContact}
-            />
-          </>
-        ) : (
-          <Notification message="No contacts" />
+      <div className={s.App}>
+        <Searchbar onSubmit={this.handleFormSubmit} />
+        {photos && (
+          <ImageGallery photos={photos} openModal={this.handleOpenModal} />
         )}
+        {totalPages > 1 && page < totalPages && !isLoader ? (
+          <Button onClick={this.handleClickButton} />
+        ) : (
+          ''
+        )}
+        {isLoader && <Loader />}
+        {showModal && (
+          <Modal close={this.handleToggleModal}>
+            {isLoader && <Loader color="white" />}
+            <img
+              className={s.ModalContent}
+              src={modalContent.src}
+              alt={modalContent.alt}
+              onLoad={this.handleToggleLoader}
+            />
+          </Modal>
+        )}
+        <ToastContainer />
       </div>
     );
   }
